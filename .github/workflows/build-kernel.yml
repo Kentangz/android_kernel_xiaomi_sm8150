@@ -52,7 +52,7 @@ jobs:
       - name: Allocate Swap Space (Prevent OOM Kill)
         run: |
           echo "Add 10GB Swap Space to prevent running out of RAM"
-          sudo fallocate -l 10G /swapfile-extra
+          sudo fallocate -l 4G /swapfile-extra
           sudo chmod 600 /swapfile-extra
           sudo mkswap /swapfile-extra
           sudo swapon /swapfile-extra
