@@ -50,6 +50,16 @@ jobs:
           # Setting up basic configuration
           make O=out vendor/sm8150-perf_defconfig || make O=out sm8150-perf_defconfig
           
+          make -j$(nproc --all) O=out \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip
           # Running the build process using all available CPU cores
           make -j$(nproc --all) O=out CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
