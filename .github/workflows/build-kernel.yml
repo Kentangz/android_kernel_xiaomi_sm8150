@@ -38,6 +38,11 @@ jobs:
           echo "CONFIG_USER_NS=y" >> $DEFCONFIG
           echo "CONFIG_VETH=y" >> $DEFCONFIG
 
+          # Turn off LTO to avoid Audio Techpack errors
+          echo "CONFIG_LTO=n" >> $DEFCONFIG
+          echo "CONFIG_LTO_CLANG=n" >> $DEFCONFIG
+          echo "CONFIG_LTO_NONE=y" >> $DEFCONFIG
+
       - name: Allocate Swap Space (Prevent OOM Kill)
         run: |
           echo "Add 10GB Swap Space to prevent running out of RAM"
