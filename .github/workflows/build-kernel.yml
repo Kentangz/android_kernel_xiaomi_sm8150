@@ -1,0 +1,78 @@
+name: Build Kernel Raphael (Docker Ready)
+
+# This workflow will only run if you trigger it manually.
+on:
+  workflow_dispatch:
+
+jobs:
+  build-kernel:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v4
+
+      - name: Setup Build Environment
+        run: |
+          echo "Installing required dependencies."
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5-dev libncurses5 libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3
+
+      - name: Download Toolchain (Proton Clang)
+        run: |
+          echo "Downloading the Clang compiler"
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
+
+      - name: Inject Docker Defconfig Flags
+        run: |
+          echo "Injecting Docker configuration into defconfig"
+          DEFCONFIG="arch/arm64/configs/vendor/sm8150-perf_defconfig"
+          
+          if [ ! -f "$DEFCONFIG" ]; then
+            DEFCONFIG="arch/arm64/configs/sm8150-perf_defconfig"
+          fi
+          
+          echo "CONFIG_PID_NS=y" >> $DEFCONFIG
+          echo "CONFIG_IPC_NS=y" >> $DEFCONFIG
+          echo "CONFIG_CGROUP_DEVICE=y" >> $DEFCONFIG
+          echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> $DEFCONFIG
+          echo "CONFIG_USER_NS=y" >> $DEFCONFIG
+          echo "CONFIG_VETH=y" >> $DEFCONFIG
+
+      - name: Build Kernel
+        run: |
+          echo "Starting the compilation process"
+          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export KBUILD_BUILD_USER="Kentangz"
+          export KBUILD_BUILD_HOST="GitHub-Actions"
+          
+          # Setting up basic configuration
+          make O=out vendor/sm8150-perf_defconfig || make O=out sm8150-perf_defconfig
+          
+          # Running the build process using all available CPU cores
+          make -j$(nproc --all) O=out CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+
+      - name: Package with AnyKernel3
+        run: |
+          echo "Wrapping the kernel output into a flashable ZIP file"
+          git clone https://github.com/osm0sis/AnyKernel3.git -b master ak3
+          
+          # Copy the build Image/Image.gz-dtb file to the AnyKernel3 folder
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+            cp out/arch/arm64/boot/Image.gz-dtb ak3/
+          elif [ -f out/arch/arm64/boot/Image ]; then
+            cp out/arch/arm64/boot/Image ak3/
+          fi
+          
+          cd ak3
+          sed -i 's/device.name1=maguro/device.name1=raphael/g' anykernel.sh
+
+          # Change the zip name to make it easier to recognize
+          zip -r9 ../Raphael-Docker-Kernel.zip *
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Raphael-Docker-Kernel
+          path: Raphael-Docker-Kernel.zip
