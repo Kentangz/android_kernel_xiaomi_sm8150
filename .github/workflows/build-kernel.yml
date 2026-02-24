@@ -38,6 +38,15 @@ jobs:
           echo "CONFIG_USER_NS=y" >> $DEFCONFIG
           echo "CONFIG_VETH=y" >> $DEFCONFIG
 
+      - name: Allocate Swap Space (Prevent OOM Kill)
+        run: |
+          echo "Add 10GB Swap Space to prevent running out of RAM"
+          sudo fallocate -l 10G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+          
       - name: Build Kernel
         run: |
           echo "Starting the compilation process"
@@ -50,6 +59,7 @@ jobs:
           # Setting up basic configuration
           make O=out vendor/sm8150-perf_defconfig || make O=out sm8150-perf_defconfig
           
+          # Running the build process using all available CPU cores with LLVM Toolchain
           make -j$(nproc --all) O=out \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
@@ -60,9 +70,7 @@ jobs:
             OBJCOPY=llvm-objcopy \
             OBJDUMP=llvm-objdump \
             STRIP=llvm-strip
-          # Running the build process using all available CPU cores
-          make -j$(nproc --all) O=out CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-
+            
       - name: Package with AnyKernel3
         run: |
           echo "Wrapping the kernel output into a flashable ZIP file"
