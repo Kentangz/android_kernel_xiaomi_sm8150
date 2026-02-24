@@ -14,7 +14,7 @@ jobs:
         run: |
           echo "Installing required dependencies."
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5-dev libncurses5 libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3
+          sudo apt-get install -y bc bison build-essential ccache curl flex git gnupg gperf liblz4-tool libncurses5-dev libncurses5 libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
 
       - name: Download Toolchain (Proton Clang)
         run: |
@@ -37,13 +37,17 @@ jobs:
           echo "CONFIG_USER_NS=y" >> $DEFCONFIG
           echo "CONFIG_VETH=y" >> $DEFCONFIG
 
+          # Turn off LTO to save RAM and speed up compilation
           echo "CONFIG_LTO=n" >> $DEFCONFIG
           echo "CONFIG_LTO_CLANG=n" >> $DEFCONFIG
           echo "CONFIG_LTO_NONE=y" >> $DEFCONFIG
 
-          sed -i '/ELLIPTIC/d' $DEFCONFIG
-          echo "# CONFIG_SND_SOC_QDSP6_APR_ELLIPTIC is not set" >> $DEFCONFIG
-          echo "# CONFIG_AUDIO_ELLIPTIC_ULTRASOUND is not set" >> $DEFCONFIG
+      - name: Patch Audio Techpack (Fix elus_afe)
+        run: |
+          echo "Menyuntikkan fungsi dummy elus_afe ke dalam C source code..."
+          if [ -f "techpack/audio/dsp/apr_elliptic.c" ]; then
+            echo -e "\n// Dummy function to satisfy linker\n__attribute__((weak)) int elus_afe() { return 0; }" >> techpack/audio/dsp/apr_elliptic.c
+          fi
 
       - name: Allocate Swap Space (Prevent OOM Kill)
         run: |
@@ -66,7 +70,7 @@ jobs:
           # Setting up basic configuration
           make O=out vendor/sm8150-perf_defconfig || make O=out sm8150-perf_defconfig
           
-          # Menggunakan LLVM murni kembali (karena biang keroknya sudah dibunuh)
+          # Menggunakan LLVM murni
           make -j$(nproc --all) O=out \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
