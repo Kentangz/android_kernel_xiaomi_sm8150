@@ -1,0 +1,106 @@
+name: Build Kernel Raphael
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-kernel:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Free Up Disk Space
+        run: |
+          echo "Cleaning GitHub server bloatware to free up SSD space"
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo apt-get clean
+          df -h
+
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v4
+        with:
+          repository: crdroidandroid/android_kernel_xiaomi_sm8150
+          ref: 16.0-raphael
+
+      - name: Setup Build Environment
+        run: |
+          echo "Installing required dependencies."
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex git gnupg gperf liblz4-tool libncurses5-dev libncurses5 libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
+
+      - name: Download Toolchain (Proton Clang)
+        run: |
+          echo "Downloading the Clang compiler"
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
+
+      - name: Inject Docker Defconfig Flags
+        run: |
+          echo "Injecting Docker configuration into defconfig"
+          DEFCONFIG="arch/arm64/configs/vendor/sm8150-perf_defconfig"
+          
+          if [ ! -f "$DEFCONFIG" ]; then
+            DEFCONFIG="arch/arm64/configs/sm8150-perf_defconfig"
+          fi
+          
+          echo "CONFIG_PID_NS=y" >> $DEFCONFIG
+          echo "CONFIG_IPC_NS=y" >> $DEFCONFIG
+          echo "CONFIG_CGROUP_DEVICE=y" >> $DEFCONFIG
+          echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> $DEFCONFIG
+          echo "CONFIG_USER_NS=y" >> $DEFCONFIG
+          echo "CONFIG_VETH=y" >> $DEFCONFIG
+
+      - name: Allocate Swap Space (Prevent OOM Kill)
+        run: |
+          echo "Add 4GB Swap Space to prevent running out of RAM"
+          sudo fallocate -l 4G /swapfile-extra
+          sudo chmod 600 /swapfile-extra
+          sudo mkswap /swapfile-extra
+          sudo swapon /swapfile-extra
+          free -h
+          
+      - name: Build Kernel
+        run: |
+          echo "Starting the compilation process"
+          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export KBUILD_BUILD_USER="Kentangz"
+          export KBUILD_BUILD_HOST="GitHub-Actions"
+          
+          # Setting up basic configuration
+          make O=out vendor/sm8150-perf_defconfig || make O=out sm8150-perf_defconfig
+          
+          make -j$(nproc --all) O=out \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip
+            
+      - name: Package with AnyKernel3
+        run: |
+          echo "Wrapping the kernel output into a flashable ZIP file"
+          git clone https://github.com/osm0sis/AnyKernel3.git -b master ak3
+          
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+            cp out/arch/arm64/boot/Image.gz-dtb ak3/
+          elif [ -f out/arch/arm64/boot/Image ]; then
+            cp out/arch/arm64/boot/Image ak3/
+          fi
+          
+          cd ak3
+          sed -i 's/device.name1=maguro/device.name1=raphael/g' anykernel.sh
+          sed -i 's|block=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;|block=/dev/block/bootdevice/by-name/boot;|g' anykernel.sh
+
+          zip -r9 ../Raphael-Docker-Kernel.zip *
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Raphael-Docker-Kernel
+          path: Raphael-Docker-Kernel.zip
