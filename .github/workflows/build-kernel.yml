@@ -9,7 +9,16 @@ jobs:
     steps:
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
-
+        
+      - name: Free Up Disk Space
+        run: |
+          echo "Membersihkan bloatware server GitHub untuk membebaskan ruang SSD..."
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo apt-get clean
+          df -h
       - name: Setup Build Environment
         run: |
           echo "Installing required dependencies."
