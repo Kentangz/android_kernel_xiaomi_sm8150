@@ -15,7 +15,6 @@ jobs:
           sudo rm -rf /opt/ghc
           sudo rm -rf /opt/hostedtoolcache/CodeQL
           sudo apt-get clean
-          df -h
 
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
@@ -29,56 +28,51 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential ccache curl flex git gnupg gperf liblz4-tool libncurses5-dev libncurses5 libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
 
-      - name: Download Toolchain (Proton Clang)
+      - name: Download Toolchain (WeebX Modern Clang)
         run: |
-          echo "Downloading the Clang compiler"
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
+          echo "Mengunduh Clang modern (LLVM 18+) untuk Android 16"
+          git clone --depth=1 https://github.com/WeebX-Kernel/WeebX-Clang.git clang
 
       - name: Inject Docker Defconfig Flags
         run: |
-          echo "Injecting Docker configuration into defconfig"
-          DEFCONFIG="arch/arm64/configs/vendor/sm8150-perf_defconfig"
+          echo "Mencari Defconfig khusus Raphael"
+          DEFCONFIG="arch/arm64/configs/vendor/raphael_defconfig"
           
           if [ ! -f "$DEFCONFIG" ]; then
-            DEFCONFIG="arch/arm64/configs/sm8150-perf_defconfig"
+            DEFCONFIG="arch/arm64/configs/vendor/sm8150-perf_defconfig"
           fi
           
-          # Fitur wajib untuk Docker
+          # Fitur wajib Docker
           echo "CONFIG_PID_NS=y" >> $DEFCONFIG
           echo "CONFIG_IPC_NS=y" >> $DEFCONFIG
           echo "CONFIG_CGROUP_DEVICE=y" >> $DEFCONFIG
           echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> $DEFCONFIG
           echo "CONFIG_USER_NS=y" >> $DEFCONFIG
           echo "CONFIG_VETH=y" >> $DEFCONFIG
-          
-          # CATATAN: Fitur pematikan LTO dihapus agar keamanan CFI Android 16 tidak rusak (mencegah bootloop)
 
       - name: Patch Audio Techpack (Fix elus_afe)
         run: |
-          echo "Menyuntikkan variabel dummy elus_afe ke dalam C source code..."
           if [ -f "techpack/audio/dsp/apr_elliptic.c" ]; then
             echo -e "\n// Dummy variable to satisfy linker\n__attribute__((weak)) afe_ultrasound_state_t elus_afe;" >> techpack/audio/dsp/apr_elliptic.c
           fi
 
-      - name: Allocate Swap Space (Prevent OOM Kill)
+      - name: Allocate Swap Space
         run: |
-          echo "Add 4GB Swap Space to prevent running out of RAM"
           sudo fallocate -l 4G /swapfile-extra
           sudo chmod 600 /swapfile-extra
           sudo mkswap /swapfile-extra
           sudo swapon /swapfile-extra
-          free -h
           
       - name: Build Kernel
         run: |
-          echo "Starting the compilation process"
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
           export KBUILD_BUILD_USER="Kentangz"
           export KBUILD_BUILD_HOST="GitHub-Actions"
           
-          make O=out vendor/sm8150-perf_defconfig || make O=out sm8150-perf_defconfig
+          # Memprioritaskan config raphael
+          make O=out vendor/raphael_defconfig || make O=out vendor/sm8150-perf_defconfig || make O=out sm8150-perf_defconfig
           
           make -j$(nproc --all) O=out \
             CC=clang \
@@ -93,18 +87,26 @@ jobs:
             
       - name: Package with AnyKernel3
         run: |
-          echo "Wrapping the kernel output into a flashable ZIP file"
           git clone https://github.com/osm0sis/AnyKernel3.git -b master ak3
           
+          # Menyalin Image Utama
           if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
             cp out/arch/arm64/boot/Image.gz-dtb ak3/
           elif [ -f out/arch/arm64/boot/Image ]; then
             cp out/arch/arm64/boot/Image ak3/
           fi
           
-          cd ak3
+          # Menyalin Peta Perangkat Keras (Sangat Penting untuk Raphael)
+          if [ -f out/arch/arm64/boot/dtbo.img ]; then
+            cp out/arch/arm64/boot/dtbo.img ak3/
+          fi
+          if [ -f out/arch/arm64/boot/dts/vendor/qcom/raphael.dtb ]; then
+            cp out/arch/arm64/boot/dts/vendor/qcom/raphael.dtb ak3/dtb
+          elif [ -f out/arch/arm64/boot/dtb ]; then
+            cp out/arch/arm64/boot/dtb ak3/dtb
+          fi
           
-          # Membuang script bawaan AnyKernel yang bermasalah dan membuat script khusus Raphael
+          cd ak3
           rm -f anykernel.sh
           cat << 'EOF' > anykernel.sh
           properties() { '
@@ -116,12 +118,6 @@ jobs:
           do.cleanuponabort=0
           device.name1=raphael
           device.name2=raphaelin
-          device.name3=
-          device.name4=
-          device.name5=
-          supported.versions=
-          supported.patchlevels=
-          supported.vendorpatchlevels=
           '; }
           boot_attributes() {
           set_perm_recursive 0 0 755 644 $RAMDISK/*;
