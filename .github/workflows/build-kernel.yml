@@ -1,4 +1,4 @@
-name: Build Kernel Raphael
+name: Build Kernel Raphael (Docker Ready)
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ jobs:
     steps:
       - name: Free Up Disk Space
         run: |
-          echo "Cleaning GitHub server bloatware to free up SSD space"
+          echo "Membersihkan bloatware server GitHub untuk membebaskan ruang SSD..."
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
@@ -43,16 +43,15 @@ jobs:
             DEFCONFIG="arch/arm64/configs/sm8150-perf_defconfig"
           fi
           
+          # Fitur wajib untuk Docker
           echo "CONFIG_PID_NS=y" >> $DEFCONFIG
           echo "CONFIG_IPC_NS=y" >> $DEFCONFIG
           echo "CONFIG_CGROUP_DEVICE=y" >> $DEFCONFIG
           echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> $DEFCONFIG
           echo "CONFIG_USER_NS=y" >> $DEFCONFIG
           echo "CONFIG_VETH=y" >> $DEFCONFIG
-
-          echo "CONFIG_LTO=n" >> $DEFCONFIG
-          echo "CONFIG_LTO_CLANG=n" >> $DEFCONFIG
-          echo "CONFIG_LTO_NONE=y" >> $DEFCONFIG
+          
+          # CATATAN: Fitur pematikan LTO dihapus agar keamanan CFI Android 16 tidak rusak (mencegah bootloop)
 
       - name: Patch Audio Techpack (Fix elus_afe)
         run: |
@@ -79,7 +78,6 @@ jobs:
           export KBUILD_BUILD_USER="Kentangz"
           export KBUILD_BUILD_HOST="GitHub-Actions"
           
-          # Setting up basic configuration
           make O=out vendor/sm8150-perf_defconfig || make O=out sm8150-perf_defconfig
           
           make -j$(nproc --all) O=out \
@@ -105,8 +103,38 @@ jobs:
           fi
           
           cd ak3
-          sed -i 's/device.name1=maguro/device.name1=raphael/g' anykernel.sh
-          sed -i 's|block=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;|block=/dev/block/bootdevice/by-name/boot;|g' anykernel.sh
+          
+          # Membuang script bawaan AnyKernel yang bermasalah dan membuat script khusus Raphael
+          rm -f anykernel.sh
+          cat << 'EOF' > anykernel.sh
+          properties() { '
+          kernel.string=Raphael Docker Kernel by Kentangz
+          do.devicecheck=1
+          do.modules=0
+          do.systemless=1
+          do.cleanup=1
+          do.cleanuponabort=0
+          device.name1=raphael
+          device.name2=raphaelin
+          device.name3=
+          device.name4=
+          device.name5=
+          supported.versions=
+          supported.patchlevels=
+          supported.vendorpatchlevels=
+          '; }
+          boot_attributes() {
+          set_perm_recursive 0 0 755 644 $RAMDISK/*;
+          set_perm_recursive 0 0 750 750 $RAMDISK/init* $RAMDISK/sbin;
+          }
+          BLOCK=/dev/block/bootdevice/by-name/boot;
+          IS_SLOT_DEVICE=0;
+          RAMDISK_COMPRESSION=auto;
+          PATCH_VBMETA_FLAG=auto;
+          . tools/ak3-core.sh;
+          dump_boot;
+          write_boot;
+          EOF
 
           zip -r9 ../Raphael-Docker-Kernel.zip *
 
