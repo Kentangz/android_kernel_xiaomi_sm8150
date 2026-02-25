@@ -71,9 +71,10 @@ jobs:
           export KBUILD_BUILD_USER="Kentangz"
           export KBUILD_BUILD_HOST="GitHub-Actions"
           
-          # Memprioritaskan config raphael
-          make O=out vendor/raphael_defconfig || make O=out vendor/sm8150-perf_defconfig || make O=out sm8150-perf_defconfig
+          # Mencari cetak biru yang paling tepat
+          make O=out vendor/raphael-perf_defconfig || make O=out vendor/raphael_defconfig || make O=out vendor/sm8150-perf_defconfig
           
+          # KUNCI UTAMA: Memaksa pembuatan Image.gz-dtb dan dtbo.img
           make -j$(nproc --all) O=out \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
@@ -83,27 +84,22 @@ jobs:
             NM=llvm-nm \
             OBJCOPY=llvm-objcopy \
             OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip
+            STRIP=llvm-strip \
+            Image.gz-dtb dtbo.img
             
       - name: Package with AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git -b master ak3
           
-          # Menyalin Image Utama
+          # Wajib mengambil Image.gz-dtb yang sudah menyatu dengan Peta Perangkat Keras
           if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
             cp out/arch/arm64/boot/Image.gz-dtb ak3/
-          elif [ -f out/arch/arm64/boot/Image ]; then
-            cp out/arch/arm64/boot/Image ak3/
+          elif [ -f out/arch/arm64/boot/Image.gz ]; then
+            cp out/arch/arm64/boot/Image.gz ak3/
           fi
           
-          # Menyalin Peta Perangkat Keras (Sangat Penting untuk Raphael)
           if [ -f out/arch/arm64/boot/dtbo.img ]; then
             cp out/arch/arm64/boot/dtbo.img ak3/
-          fi
-          if [ -f out/arch/arm64/boot/dts/vendor/qcom/raphael.dtb ]; then
-            cp out/arch/arm64/boot/dts/vendor/qcom/raphael.dtb ak3/dtb
-          elif [ -f out/arch/arm64/boot/dtb ]; then
-            cp out/arch/arm64/boot/dtb ak3/dtb
           fi
           
           cd ak3
