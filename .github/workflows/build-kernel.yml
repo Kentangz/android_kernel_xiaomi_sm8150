@@ -54,6 +54,13 @@ jobs:
           echo "CONFIG_LTO_CLANG=n" >> $DEFCONFIG
           echo "CONFIG_LTO_NONE=y" >> $DEFCONFIG
 
+      - name: Patch Audio Techpack (Fix elus_afe)
+        run: |
+          echo "Menyuntikkan variabel dummy elus_afe ke dalam C source code..."
+          if [ -f "techpack/audio/dsp/apr_elliptic.c" ]; then
+            echo -e "\n// Dummy variable to satisfy linker\n__attribute__((weak)) afe_ultrasound_state_t elus_afe;" >> techpack/audio/dsp/apr_elliptic.c
+          fi
+
       - name: Allocate Swap Space (Prevent OOM Kill)
         run: |
           echo "Add 4GB Swap Space to prevent running out of RAM"
